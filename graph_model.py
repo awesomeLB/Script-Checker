@@ -55,15 +55,15 @@ class GraphFlows(nn.Module):
         # init parameters for distribution
         self.base_logit_probs = torch.tensor(torch.rand(self.out_size, self.vocab_size), requires_grad=True)
 
-        n_auxiliary = n_s # dim of auxiliary feature,  # auxiliary should has same size as input.
+        n_auxiliary = n_s # dim of auxiliary feature, auxiliary should has same size as input.
 
         self.flow_model = NF(
             n_auxiliary,
             latent_size=self.out_size,
             nlayers=3,
             layer_type=DiscreteCouplingFlow,
-            sub_network_layers=2,
-            sub_network_cells=16,
+            sub_network_layers=3,
+            sub_network_cells=10,
             sub_network_activation=th.nn.Tanh,
             sub_network_batch_norm=False,
             scaled=True,
@@ -115,7 +115,7 @@ class GraphFlows(nn.Module):
         out = torch.argmax(out, dim=2)
         return out
 
-
+    
     def _encode_ob(self, ob):
         return F.relu(self.fc_layer(ob))
 
@@ -139,11 +139,11 @@ class GraphFlows(nn.Module):
         self.prior = self.sample_graphs_from_base(len(ob), self.base_logit_probs)
         self.xs = self.flow_model.forward(self.prior).squeeze()
 
-        priorv =self.prior.reshape(1*self.nagt*self.nagt).long()#convert to int64
+        priorv =self.prior.reshape(1*self.nagt*self.nagt).long() # convert to int64
         priorv = torch.nn.functional.one_hot(priorv, num_classes=2).reshape(1, self.nagt*self.nagt,2)
 
         self.base_log_probs_sm = torch.nn.functional.log_softmax(self.base_logit_probs, dim=-1)
-        log_As_probs = priorv * self.base_log_probs_sm  # zs are onehot so zero out all other logprobs.
+        log_As_probs = priorv * self.base_log_probs_sm # zs are onehot so zero out all other logprobs.
         log_As_probs = th.sum(log_As_probs, dim=(1,2))  
 
         As = self.xs.reshape([-1,self.nagt, self.nagt]).squeeze().float()
@@ -261,7 +261,7 @@ class gradient_transfer_backward_transform():
         self.prev_val = NATIVE_GRADIENT
         NATIVE_GRADIENT = False
 
-
+        
     def __exit__(self, exc_type, exc_val, exc_tb):
         global NATIVE_GRADIENT
         NATIVE_GRADIENT = self.prev_val
@@ -292,7 +292,7 @@ class ScaleLayer(nn.Module):
         else:
             raise NotImplementedError()
 
-
+        
     def get_scale(self):
         if self.scale_mode == 'linear':
             scale = self.scale
@@ -302,7 +302,7 @@ class ScaleLayer(nn.Module):
             scale = torch.sigmoid(self.scale)
         return scale
 
-
+    
     def forward(self, input):
         return self.get_scale() * input
 
@@ -317,23 +317,23 @@ class AbstractInvertibleLayer(Transform, nn.Module):  # , Transform):
         self.auxiliary_input = None
         self._cache = {'input': None, 'output': None, 'ldj': None, 'Jacob': None}
 
+        
     def __hash__(self):
         return super(nn.Module, self).__hash__()
-
 
 
     def set_auxiliary(self, auxiliary):
         self.auxiliary_input = auxiliary
 
-
+        
     def forward_transform(self, input, auxiliary_input=None):
         raise NotImplementedError()
 
-
+    
     def backward_transform(self, output, auxiliary_input=None, alpha=1.0):
         raise NotImplementedError()
 
-
+    
     def set_gradient_mode_transform(self, mode=True):
         # for reparameterization in PF
         self.grad_mode = mode
@@ -341,11 +341,11 @@ class AbstractInvertibleLayer(Transform, nn.Module):  # , Transform):
             if isinstance(c, AbstractInvertibleLayer):
                 c.set_gradient_mode_transform(mode)
 
-
+                
     def forward(self, x, logp=None, auxiliary_input=None):
         raise NotImplementedError()
 
-
+    
     def log_abs_det_jacobian(self, x, y):
         if x is self._cache['input']:
             ldj = self._cache['ldj']
@@ -354,10 +354,10 @@ class AbstractInvertibleLayer(Transform, nn.Module):  # , Transform):
                 x = self._cache['input_detach']
                 x = neg_grad(x)
             y, ldj, Jacob = self.forward_transform(x, auxiliary_input=self.auxiliary_input)
-
+    
         return ldj.unsqueeze(-1)
 
-
+    
     def inv(self, y):
         x = self.backward_transform(y, auxiliary_input=self.auxiliary_input)
         ldj = None
@@ -369,18 +369,18 @@ class AbstractInvertibleLayer(Transform, nn.Module):  # , Transform):
         self.set_gradient_mode_transform(True)
         return x
 
-
+    
     def _inverse(self, y):
         return self.inv(y)
 
-
+    
     def __call__(self, x):
         if x is self._cache['input']:
             return self._cache['output']
         x_input = x
         if not NATIVE_GRADIENT:
             x_input = x.detach()
-
+    
         y = self.forward_transform(x_input, auxiliary_input=self.auxiliary_input)
         ldj, Jacob = None, None
         if Jacob is None and not NATIVE_GRADIENT:
@@ -398,12 +398,12 @@ class AbstractInvertibleLayer(Transform, nn.Module):  # , Transform):
         })
         return y
 
-
+    
     def clone_and_copy_data(self, x, y, Jacob):
         out = jacob_mult(y, x, Jacob)
         return out
 
-
+    
     def erase_cache(self):
         self._cache = {k: None for k in self._cache}
 
@@ -413,7 +413,7 @@ class NegGrad(torch.autograd.Function):
     def forward(ctx, x):
         return x
 
-
+    
     def backward(ctx, grad_output):
         return - grad_output
 
@@ -427,7 +427,7 @@ class JacobMult(torch.autograd.Function):
         ctx.save_for_backward(jacob.detach())
         return x
 
-
+    
     @staticmethod
     def backward(ctx, grad_output):
         jacob, = ctx.saved_tensors
@@ -437,11 +437,11 @@ class JacobMult(torch.autograd.Function):
         sol, _ = torch.solve(B, A)
         G = sol.squeeze(-1).to(dtype)
 
-
         return G, grad_output, None
 
 
 jacob_mult = JacobMult.apply
+
 
 class BinActive(torch.autograd.Function):
     '''
@@ -451,10 +451,10 @@ class BinActive(torch.autograd.Function):
     def forward(ctx, input):
         ctx.save_for_backward(input)
         size = input.size()
-        input = (input-1e-16).sign()
+        input = input.sign()
         return input
 
-
+    
     @staticmethod
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
@@ -463,7 +463,7 @@ class BinActive(torch.autograd.Function):
         grad_input[input.le(-1)] = 0
         return grad_input
 
-
+    
 class DiscreteCouplingFlow(AbstractInvertibleLayer):
     invertible = True
 
@@ -512,7 +512,7 @@ class DiscreteCouplingFlow(AbstractInvertibleLayer):
 
         self._build_layer()
 
-
+        
     def _build_layer(self):
         self.transform_ft = NeuralNet(
             self.input_size,
