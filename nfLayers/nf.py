@@ -98,7 +98,7 @@ class NF(nn.Module):
             self.embedding_layer.fc[-1].bias.data.fill_(inv_softplus(torch.tensor(self.embedding_sd_init)))
         else:
             self.register_buffer('embedding_sd', torch.full((self.latent_size,),self.embedding_sd_init))
-            
+
     def _make_layers(self):
         if self.augmented_latent_size>0:
             new_latent_size = self.augmented_latent_size
@@ -417,7 +417,7 @@ def inv_nf_lm(seq, x_guess, y, alpha_init=1.0, decay=0.99, max_iter=100, to_doub
             print(f'iter {count}, d: {prev_loss.max(), prev_loss.min()}')
             if count==0:
                 d_init = d
-            if loss.max()<thr: # or abs(dd)<thr:
+            if loss.max()<thr:# or abs(dd)<thr:
                 break
             if count==max_iter:
                 print(f'failed at count {count} with d {d} (d init: {d_init})')
